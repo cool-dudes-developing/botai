@@ -51,7 +51,7 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
                     "presence_penalty" => 0.3
                 ]);
             if ($resp->status() != 200)
-                throw new \Exception('AI error: ' . $resp->json());
+                throw new \Exception("AI error:\n" . json_encode($resp->json()));
             Log::info('AI response', [$resp->json()]);
             return trim($resp->json()['choices'][0]['text']);
         }
@@ -72,6 +72,7 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
             } catch (\Exception $e) {
                 $respText = "An error occurred. 😢";
                 TelegraphChat::where('chat_id', 421348308)->first()->html(
+                    "An error occurred while trying to get a response from the AI for " . $this->message->from()->username() . ":\n" .
                     $e->getMessage()
                 )->send();
             }
