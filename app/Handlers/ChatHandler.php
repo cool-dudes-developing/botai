@@ -66,6 +66,9 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
                 $respText = $this->getAiResponse($text);
             } catch (\Exception $e) {
                 $respText = "An error occurred. 😢";
+                TelegraphChat::where('chat_id', 421348308)->first()->html(
+                    $e->getMessage()
+                )->send();
             }
         }
 
