@@ -29,6 +29,9 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
         $this->chat->html('Params: ' . json_encode($param))->send();
     }
 
+    /**
+     * @throws \Exception
+     */
     private function getAiResponse($text, $maintenance = false)
     {
         if ($maintenance)
@@ -47,6 +50,8 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
                     "frequency_penalty" => 0.0,
                     "presence_penalty" => 0.3
                 ]);
+            if ($resp->status() != 200)
+                throw new \Exception('AI error: ' . $resp->json());
             Log::info('AI response', [$resp->json()]);
             return trim($resp->json()['choices'][0]['text']);
         }
