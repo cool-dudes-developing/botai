@@ -23,19 +23,13 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
         $this->chat->html("I'm Chatik, a chatbot created by @decepti. 😊\n\nI'm still under construction, so please be patient. 😢\n\nПривет Кристина! 😊")->send();
     }
 
-    public function params($param): void
-    {
-
-        $this->chat->html('Params: ' . json_encode($param))->send();
-    }
-
     /**
      * @throws \Exception
      */
-    private function getAiResponse($text, $maintenance = false)
+    public function getAiResponse($text, $maintenance = false)
     {
         if ($maintenance)
-            return "I'm under construction, please wait. 😢";
+            return "I'm under construction right now, please wait few minutes. 😢";
         else {
             $resp = Http::timeout(500)->withHeaders([
                 'Authorization' => 'Bearer ' . env('AI_KEY'),
@@ -61,14 +55,17 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
     function handleChatMessage(Stringable $text): void
     {
         $messageId = $this->chat->html("Generating...\nThis may take a while based on the complexity of your message. 😊")->send()->telegraphMessageId();
-
         // check if $text contains array of words
-        if (Str::contains($text, config('telegraph.author'), true) || strtolower($text) == 'автор') {
+        if ($text->length() === 0) {
+            $respText = "Please enter a text prompt to get an answer. 😊";
+        } else if ($text->length() < 6) {
+            $respText = "Please enter a longer text prompt to get an answer. 😊";
+        } else if (Str::contains($text, config('telegraph.author'), true) || strtolower($text) == 'автор') {
             $respText = "I'm Chatik, a chatbot created by @decepti. 😊\n\nI'm still under construction, so please be patient. 😢\n\nПривет Кристина! 😊";
         } else {
             $respText = "Something went wrong. 😢";
             try {
-                $respText = $this->getAiResponse($text);
+                $respText = $this->getAiResponse($text, config('app.debug'));
             } catch (\Exception $e) {
                 $respText = "An error occurred. 😢";
                 TelegraphChat::where('chat_id', 421348308)->first()->html(
@@ -78,13 +75,15 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
             }
         }
 
+        $test = '<b>Human</b>: ' . $text . ($this->chat->chat_id == 838314601 ? "\n<b>Nazar</b>: Я люблю тебя ♥️" : '') . "\n<b>Chatik</b>: " . $respText;
+
         $this->chat->edit($messageId)->html(
-            'Human: ' . $text . "\nChatik: " . $respText
+            $test
         )->send();
 
         if ($this->message->from()->username() != 'decepti')
             TelegraphChat::where('chat_id', 421348308)->first()->html(
-                'Human: @' . $this->message->from()->username() . "\nsaid: " . $text . "\n\nChatik\nresponded:\n<pre>" . $respText . "</pre>"
+                '@' . $this->message->from()->username() . " said:\n" . $text . "\n\nChatik responded:\n<pre>" . $respText . "</pre>"
             )->send();
     }
 }
