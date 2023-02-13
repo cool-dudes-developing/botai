@@ -71,6 +71,8 @@ return [
         'Nazar','Potipaka','mutado','decepti','Назар','Потипака','Потіпака'
     ],
 
+    'admin_chat_id' => env('TELEGRAPH_ADMIN_CHAT_ID', 0),
+
     /*
      * Set model class for both TelegraphBot and TelegraphChat,
      * to allow more customization.

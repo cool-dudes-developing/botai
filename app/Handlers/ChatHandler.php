@@ -53,6 +53,19 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
         }
     }
 
+    private function sendToAdmin($text)
+    {
+        if ($chat_id = config('telegraph.admin_chat_id')) {
+            if ($chat = TelegraphChat::where('chat_id', $chat_id)->first()) {
+                $chat->html($text)->send();
+            } else {
+                Log::info('Admin chat not found in database, try adding it manually or start a conversation with the bot first.');
+            }
+        } else {
+            Log::info('Admin user id not set, set TELEGRAPH_ADMIN_CHAT_ID in your .env file.');
+        }
+    }
+
     private function getReplyHistoryArray(): array
     {
         $history = [$this->message->text()];
@@ -88,10 +101,8 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
                 $respText = $this->getAiResponse($text, config('app.debug'));
             } catch (\Exception $e) {
                 $respText = "🤖😕 Oh no! An error occurred. Sorry for the inconvenience. We are working to fix this issue ASAP.";
-                TelegraphChat::where('chat_id', 421348308)->first()->html(
-                    "An error occurred while trying to get a response from the AI for @" . $this->message->from()->username() . ":\n" .
-                    $e->getMessage()
-                )->send();
+                $this->sendToAdmin("An error occurred while trying to get a response from the AI for @" . $this->message->from()->username() . ":\n" .
+                    $e->getMessage());
             }
         }
 
@@ -99,9 +110,7 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
             $respText
         )->send();
 
-        if ($this->message->from()->username() != 'decepti')
-            TelegraphChat::where('chat_id', 421348308)->first()->html(
-                '@' . $this->message->from()->username() . " said:\n" . $text . "\n\nChatik responded:\n<pre>" . $respText . "</pre>"
-            )->send();
+        if ($this->chat->chat_id != config('telegraph.admin_chat_id'))
+            $this->sendToAdmin('@' . $this->message->from()->username() . " said:\n" . $text . "\n\nChatik responded:\n<pre>" . $respText . "</pre>");
     }
 }
