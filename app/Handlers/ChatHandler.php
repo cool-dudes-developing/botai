@@ -2,6 +2,8 @@
 
 namespace App\Handlers;
 
+use DefStudio\Telegraph\DTO\Message;
+use DefStudio\Telegraph\Enums\ChatActions;
 use DefStudio\Telegraph\Models\TelegraphBot;
 use DefStudio\Telegraph\Models\TelegraphChat;
 use Illuminate\Http\Request;
@@ -29,7 +31,7 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
     public function getAiResponse($text, $maintenance = false)
     {
         if ($maintenance)
-            return "I'm under construction right now, please wait few minutes. 😢";
+            return "🔧 Sorry, I'm currently undergoing maintenance. I'll be back up and running soon! 😊";
         else {
             $resp = Http::timeout(500)->withHeaders([
                 'Authorization' => 'Bearer ' . env('AI_KEY'),
@@ -51,23 +53,41 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
         }
     }
 
+    private function getReplyHistoryArray(): array
+    {
+        $history = [$this->message->text()];
+        $reply = $this->message->replyToMessage();
+        while ($reply) {
+            $history[] = $reply->text();
+            $reply = $reply->replyToMessage();
+        }
+        Log::info('History', $history);
+        return $history;
+    }
+
     protected
     function handleChatMessage(Stringable $text): void
     {
-        $messageId = $this->chat->html("Generating...\nThis may take a while based on the complexity of your message. 😊")->send()->telegraphMessageId();
+        $messageId = $this->chat->html("🤖⏳ Thanks for waiting! I'm working on generating the best response for you.\nIt should be ready in just a few moments. Hang tight!")->reply($this->messageId)->send()->telegraphMessageId();
+        $this->chat->action(ChatActions::TYPING)->send();
         // check if $text contains array of words
         if ($text->length() === 0) {
-            $respText = "Please enter a text prompt to get an answer. 😊";
+            $respText = "🤖🤔 Hmm, it seems like I need a bit more information to give you the best answer.\nCan you please provide a longer prompt or more details about your question? Thanks!";
         } else if ($text->length() < 6) {
             $respText = "Please enter a longer text prompt to get an answer. 😊";
         } else if (Str::contains($text, config('telegraph.author'), true) || strtolower($text) == 'автор') {
-            $respText = "I'm Chatik, a chatbot created by @decepti. 😊\n\nI'm still under construction, so please be patient. 😢\n\nПривет Кристина! 😊";
+            $respText = "👋🤖 Hey there! I'm Chatik a chat bot made by @decepti.\nI'm here to answer any questions you may have.\n<b>Just ask me anything</b>, and I'll do my best to give you a helpful response!";
         } else {
-            $respText = "Something went wrong. 😢";
             try {
+
+//                if ($this->message->replyToMessage()) {
+//                    $respText = join("\n\n", $this->getReplyHistoryArray()) . "\n\n" . Str::random(10);
+//                } else {
+//                    $respText = Str::random(10);
+//                }
                 $respText = $this->getAiResponse($text, config('app.debug'));
             } catch (\Exception $e) {
-                $respText = "An error occurred. 😢";
+                $respText = "🤖😕 Oh no! An error occurred. Sorry for the inconvenience. We are working to fix this issue ASAP.";
                 TelegraphChat::where('chat_id', 421348308)->first()->html(
                     "An error occurred while trying to get a response from the AI for @" . $this->message->from()->username() . ":\n" .
                     $e->getMessage()
@@ -75,10 +95,8 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
             }
         }
 
-        $test = '<b>Human</b>: ' . $text . ($this->chat->chat_id == 838314601 ? "\n<b>Nazar</b>: Я люблю тебя ♥️" : '') . "\n<b>Chatik</b>: " . $respText;
-
         $this->chat->edit($messageId)->html(
-            $test
+            $respText
         )->send();
 
         if ($this->message->from()->username() != 'decepti')
