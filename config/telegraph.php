@@ -60,17 +60,6 @@ return [
         'store_unknown_chats_in_db' => true,
     ],
 
-    'greetings' => ["Hello", "Hi", "Hey", "Good morning", "Good afternoon", "Good evening",
-        "Здравствуйте", "Привет", "Доброе утро", "Добрый день", "Добрый вечер",
-        "Вітаю", "Привіт", "Доброго ранку", "Доброго дня", "Доброго вечора",
-        "Добры дзень", "Вітаю", "Добрага раніцы", "Добрага дня", "Добрага вечара",
-        "Cześć", "Witaj", "Dzień dobry", "Dobry wieczór", "Dobranoc"
-    ],
-
-    'author' => [
-        'Nazar','Potipaka','mutado','decepti','Назар','Потипака','Потіпака'
-    ],
-
     'admin_chat_id' => env('TELEGRAPH_ADMIN_CHAT_ID', 0),
 
     /*
@@ -81,53 +70,53 @@ return [
      * Chat model must be or extend `DefStudio\Telegraph\Models\TelegraphChat::class`
      */
     'models' => [
-    'bot' => DefStudio\Telegraph\Models\TelegraphBot::class,
-    'chat' => DefStudio\Telegraph\Models\TelegraphChat::class,
-],
+        'bot' => App\Models\Bot::class,
+        'chat' => DefStudio\Telegraph\Models\TelegraphChat::class,
+    ],
 
     'storage' => [
-    /**
-     * Default storage driver to be used for Telegraph data
-     */
-    'default' => 'file',
+        /**
+         * Default storage driver to be used for Telegraph data
+         */
+        'default' => 'file',
 
-    'stores' => [
-        'file' => [
-            /**
-             * Telegraph cache driver to be used, must implement
-             * DefStudio\Telegraph\Contracts\StorageDriver contract
-             */
-            'driver' => \DefStudio\Telegraph\Storage\FileStorageDriver::class,
+        'stores' => [
+            'file' => [
+                /**
+                 * Telegraph cache driver to be used, must implement
+                 * DefStudio\Telegraph\Contracts\StorageDriver contract
+                 */
+                'driver' => \DefStudio\Telegraph\Storage\FileStorageDriver::class,
 
-            /*
-             * Laravel Storage disk to use. See /config/filesystems/disks for available disks
-             * If 'null', Laravel default store will be used,
-             */
-            'disk' => 'local',
+                /*
+                 * Laravel Storage disk to use. See /config/filesystems/disks for available disks
+                 * If 'null', Laravel default store will be used,
+                 */
+                'disk' => 'local',
 
-            /**
-             * Folder inside filesystem to be used as root for Telegraph storage
-             */
-            'root' => 'telegraph',
-        ],
-        'cache' => [
-            /**
-             * Telegraph cache driver to be used, must implement
-             * DefStudio\Telegraph\Contracts\StorageDriver contract
-             */
-            'driver' => \DefStudio\Telegraph\Storage\CacheStorageDriver::class,
+                /**
+                 * Folder inside filesystem to be used as root for Telegraph storage
+                 */
+                'root' => 'telegraph',
+            ],
+            'cache' => [
+                /**
+                 * Telegraph cache driver to be used, must implement
+                 * DefStudio\Telegraph\Contracts\StorageDriver contract
+                 */
+                'driver' => \DefStudio\Telegraph\Storage\CacheStorageDriver::class,
 
-            /*
-             * Laravel Cache store to use. See /config/cache/stores for available stores
-             * If 'null', Laravel default store will be used,
-             */
-            'store' => null,
+                /*
+                 * Laravel Cache store to use. See /config/cache/stores for available stores
+                 * If 'null', Laravel default store will be used,
+                 */
+                'store' => null,
 
-            /*
-             * Prefix to be prepended to cache keys
-             */
-            'key_prefix' => 'tgph',
+                /*
+                 * Prefix to be prepended to cache keys
+                 */
+                'key_prefix' => 'tgph',
+            ],
         ],
     ],
-],
 ];

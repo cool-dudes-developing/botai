@@ -2,24 +2,25 @@
 
 namespace App\Handlers;
 
+use App\Models\Bot;
 use App\Models\SavedConversations;
 use App\Models\SavedMessage;
-use DefStudio\Telegraph\DTO\Message;
 use DefStudio\Telegraph\Enums\ChatActions;
-use DefStudio\Telegraph\Models\TelegraphBot;
 use DefStudio\Telegraph\Models\TelegraphChat;
-use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Support\Stringable;
 
+/**
+ * @property Bot $bot
+ */
 class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
 {
-    public function handle(Request $request, TelegraphBot $bot): void
+    public function isAdminChat(): bool
     {
-        Log::info('Chat', [$request->all()]);
-        parent::handle($request, $bot);
+        return $this->chat->chat_id === config('telegraph.admin_chat_id');
     }
 
     public function start(): void
@@ -28,13 +29,43 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
     }
 
     /**
+     * Set to maintenance mode
+     * @return void
+     */
+    public function down(): void
+    {
+        if ($this->isAdminChat()) {
+            $this->bot->update(['maintenance' => true]);
+            $this->chat->html("🔧 I'm now in maintenance mode. 😊")->send();
+        } else {
+            $this->chat->html("🔧 Sorry, you're not allowed to do that. 😊")->send();
+
+        }
+    }
+
+    /**
+     * Set to normal mode
+     * @return void
+     */
+    public function up(): void
+    {
+        if ($this->isAdminChat()) {
+            $this->bot->update(['maintenance' => false]);
+            $this->chat->html("🔧 I'm now back online. 😊")->send();
+        } else {
+            // command not allowed
+            $this->chat->html("🔧 Sorry, you're not allowed to do that. 😊")->send();
+        }
+    }
+
+    /**
      * @throws \Exception
      */
-    public function getAiResponse($text, $maintenance = false)
+    public function getAiResponse($text)
     {
         $prompt = "The following is a conversation with an AI assistant. The assistant is helpful, creative, clever, and very friendly. " . $text . " BOT: ";
         Log::info('AI request', [$prompt]);
-        if ($maintenance)
+        if ($this->bot->maintenance)
             return "🔧 Sorry, I'm currently undergoing maintenance. I'll be back up and running soon! 😊";
         else {
             $resp = Http::timeout(500)->withHeaders([
@@ -82,8 +113,6 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
         // check if $text contains array of words
         if ($text->length() === 0) {
             $respText = "🤖🤔 Hmm, it seems like I need a bit more information to give you the best answer.\nCan you please provide a longer prompt or more details about your question? Thanks!";
-        } else if (Str::contains($text, config('telegraph.author'), true) || strtolower($text) == 'автор') {
-            $respText = "👋🤖 Hey there! I'm Chatik a chat bot made by @decepti.\nI'm here to answer any questions you may have.\n<b>Just ask me anything</b>, and I'll do my best to give you a helpful response!";
         } else {
             try {
 
@@ -105,7 +134,7 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
                     'message_id' => $this->message->id(),
                     'text' => $text
                 ]);
-                $respText = $this->getAiResponse($conversation->history(), config('app.debug'));
+                $respText = $this->getAiResponse($conversation->history());
             } catch (\Exception $e) {
                 Log::error($e->getMessage());
                 $respText = "🤖😕 Oh no! An error occurred. Sorry for the inconvenience. We are working to fix this issue ASAP.";
