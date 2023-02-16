@@ -11,6 +11,7 @@ class SavedMessage extends Model
         'sender_id',
         'conversation_id',
         'text',
+        'chat_id',
     ];
 
     public function conversation()

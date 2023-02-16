@@ -13,6 +13,7 @@ return new class extends Migration {
             $table->foreignId('message_id');
             $table->foreignId('sender_id');
             $table->foreignId('conversation_id');
+            $table->foreignId('chat_id')->nullable();
             $table->longText('text');
 
             $table->timestamps();

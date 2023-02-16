@@ -10,7 +10,7 @@ return new class extends Migration {
         Schema::create('saved_conversations', function (Blueprint $table) {
             $table->id();
 
-            $table->foreignId('chat_id');
+            $table->string('chat_id', 255);
 
             $table->timestamps();
         });

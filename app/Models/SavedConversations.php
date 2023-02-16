@@ -15,7 +15,7 @@ class SavedConversations extends Model
         return $this->hasMany(SavedMessage::class, 'conversation_id');
     }
 
-    public function history()
+    public function history() : string
     {
         return $this->messages()->orderBy('message_id')->get()->map(function ($message) {
             return ($message->sender_id === 0 ? ' BOT:' : ' USER:') . $message->text;

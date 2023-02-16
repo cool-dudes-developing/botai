@@ -2,22 +2,33 @@
 
 namespace App\Handlers;
 
+use App\Jobs\ProcessMessageJob;
 use App\Models\Bot;
 use App\Models\SavedConversations;
 use App\Models\SavedMessage;
-use DefStudio\Telegraph\Enums\ChatActions;
-use DefStudio\Telegraph\Models\TelegraphChat;
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Http;
+use DefStudio\Telegraph\DTO\Chat;
+use DefStudio\Telegraph\DTO\InlineQuery;
+use DefStudio\Telegraph\DTO\InlineQueryResultArticle;
+use DefStudio\Telegraph\Handlers\WebhookHandler;
+use DefStudio\Telegraph\Keyboard\Button;
+use DefStudio\Telegraph\Keyboard\Keyboard;
+use DefStudio\Telegraph\Models\TelegraphBot;
+use DefStudio\Telegraph\Facades\Telegraph;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use Illuminate\Support\Stringable;
 
 /**
  * @property Bot $bot
  */
-class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
+class ChatHandler extends WebhookHandler
 {
+    public function handle(Request $request, TelegraphBot $bot): void
+    {
+        Log::info('Handle', [$request]);
+        parent::handle($request, $bot);
+    }
+
     public function isAdminChat(): bool
     {
         return $this->chat->chat_id === config('telegraph.admin_chat_id');
@@ -25,7 +36,8 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
 
     public function start(): void
     {
-        $this->chat->html("I'm Chatik, a chatbot created by @decepti. 😊\n\nI'm still under construction, so please be patient. 😢\n\nПривет Кристина! 😊")->send();
+        Log::info('Start', [$this->chat->chat_id]);
+        $this->chat->markdown(__('botai.greeting'))->send();
     }
 
     /**
@@ -36,9 +48,9 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
     {
         if ($this->isAdminChat()) {
             $this->bot->update(['maintenance' => true]);
-            $this->chat->html("🔧 I'm now in maintenance mode. 😊")->send();
+            $this->chat->html(__('botai.response.admin.maintenance.down'))->send();
         } else {
-            $this->chat->html("🔧 Sorry, you're not allowed to do that. 😊")->send();
+            $this->chat->html(__('botai.response.admin.no_access'))->send();
 
         }
     }
@@ -51,112 +63,94 @@ class ChatHandler extends \DefStudio\Telegraph\Handlers\WebhookHandler
     {
         if ($this->isAdminChat()) {
             $this->bot->update(['maintenance' => false]);
-            $this->chat->html("🔧 I'm now back online. 😊")->send();
+            $this->chat->html(__('botai.response.admin.maintenance.up'))->send();
         } else {
             // command not allowed
-            $this->chat->html("🔧 Sorry, you're not allowed to do that. 😊")->send();
+            $this->chat->html(__('botai.response.admin.no_access'))->send();
         }
     }
 
-    /**
-     * @throws \Exception
-     */
-    public function getAiResponse($text)
+    public function question($text)
     {
-        $prompt = "The following is a conversation with an AI assistant. The assistant is helpful, creative, clever, and very friendly. " . $text . " BOT: ";
-        Log::info('AI request', [$prompt]);
-        if ($this->bot->maintenance)
-            return "🔧 Sorry, I'm currently undergoing maintenance. I'll be back up and running soon! 😊";
-        else {
-            $resp = Http::timeout(500)->withHeaders([
-                'Authorization' => 'Bearer ' . env('AI_KEY'),
-                'Content-Type' => 'application/json',
-            ])
-                ->post('https://api.openai.com/v1/completions', [
-                    'prompt' => $prompt,
-                    'model' => 'text-davinci-003',
-                    'max_tokens' => 2048,
-                    'temperature' => 0.9,
-                    'top_p' => 1,
-                    "frequency_penalty" => 0.0,
-                    "presence_penalty" => 0.3,
-                    "stop" => [" USER:", " AI:"]
-                ]);
-            if ($resp->status() != 200) {
-                if ($resp->status() == 429)
-                    return "🔧 I'm experiencing high traffic right now. Please try again later. 😊";
-                throw new \Exception("AI error:\n<pre>" . json_encode($resp->json()) . "</pre>");
-            }
-            Log::info('AI response', [$resp->json()]);
-            return trim($resp->json()['choices'][0]['text']);
+        Log::info('Question', [$text]);
+        if (strlen($text) == 0) {
+            $this->chat->html(__('botai.empty'))->reply($this->message->id())->send();
+            return;
         }
+        $messageId = $this->chat->html(__('botai.queuing'))->reply($this->message->id())->send()->telegraphMessageId();
+
+        ProcessMessageJob::dispatch($this->bot, $this->chat, $this->message, new Stringable($text), true, $messageId)->afterResponse();
     }
 
-    private function sendToAdmin($text)
+    protected function handleGroupChatCreated(): void
     {
-        if ($chat_id = config('telegraph.admin_chat_id')) {
-            if ($chat = TelegraphChat::where('chat_id', $chat_id)->first()) {
-                $chat->html($text)->send();
-            } else {
-                Log::info('Admin chat not found in database, try adding it manually or start a conversation with the bot first.');
-            }
-        } else {
-            Log::info('Admin user id not set, set TELEGRAPH_ADMIN_CHAT_ID in your .env file.');
+        $this->chat->html(__('botai.group.created'))->send();
+    }
+
+    protected function handleInlineQuery(InlineQuery $inlineQuery): void
+    {
+        Log::debug('Inline query', [$inlineQuery->query()]);
+//        Button::make('switch')->switchInlineQuery('foo');
+        Telegraph::answerInlineQuery($inlineQuery->id(), [
+            InlineQueryResultArticle::make('info', 'Find information', 'Find information about a topic')
+                ->description('Find information about a topic')
+                ->thumbUrl('https://img.icons8.com/officel/80/null/information.png')
+                ->thumbHeight(64)
+                ->thumbWidth(64)
+        ])->cache(10)->send();
+    }
+
+    protected function shouldReceiveResponse(): bool
+    {
+        if ($this->message->replyToMessage() === null) {
+            return $this->message->chat()->type() === 'private';
         }
+        return $this->message->replyToMessage()->from()->username() === $this->bot->name;
+    }
+
+    public function summarize()
+    {
+//        $history = SavedMessage::where('chat_id', $this->chat->chat_id)->orderBy('message_id')->get()->map(function ($message) {
+//            return ($message->sender_id == $this->bot->id ? 'AI: ' : 'USER: ') . $message->text;
+//        });
+        $history = SavedConversations::where('chat_id', $this->chat->chat_id)->orderBy('id', 'desc')->limit(10)->get()->load('messages')->map(function ($conversation) {
+            return $conversation->messages->map(function ($message) {
+                return ($message->sender_id == $this->bot->id ? 'AI: ' : 'USER: ') . $message->text;
+            })->implode("\n");
+        })->implode("\n\n");
+        Log::debug('History', [$history]);
+        $this->chat->html($history)->send();
+        return;
+
+        if ($history->count() == 0) {
+            $this->chat->html(__('botai.no_history'))->reply($this->message->id())->send();
+            return;
+        }
+        $messageId = $this->chat->html(__('botai.gathering_history'))->reply($this->message->id())->send()->telegraphMessageId();
+
+        $history = "The following is a conversation between USER and AI. Create summary of this conversation in form of list" . $history->implode(' ');
+
+        ProcessMessageJob::dispatch($this->bot, $this->chat, $this->message, new Stringable($history), true, $messageId, true, false, false)->afterResponse();
     }
 
     protected
     function handleChatMessage(Stringable $text): void
     {
-        $messageId = $this->chat->html("🤖⏳ Thanks for waiting! I'm working on generating the best response for you.\nIt should be ready in just a few moments. Hang tight!")->reply($this->messageId)->send()->telegraphMessageId();
-        $this->chat->action(ChatActions::TYPING)->send();
-        // check if $text contains array of words
-        if ($text->length() === 0) {
-            $respText = "🤖🤔 Hmm, it seems like I need a bit more information to give you the best answer.\nCan you please provide a longer prompt or more details about your question? Thanks!";
-        } else {
-            try {
-
-                // check if message is a reply to another message
-                if ($this->message->replyToMessage()) {
-                    // get conversation from reply message
-                    $message = SavedMessage::where('message_id', $this->message->replyToMessage()->id())->first();
-                    if ($message) {
-                        $conversation = $message->conversation;
-                    } else {
-                        $conversation = SavedConversations::create(['chat_id' => $this->chat->chat_id]);
-                    }
-
-                } else {
-                    $conversation = SavedConversations::create(['chat_id' => $this->chat->chat_id]);
-                }
-                $conversation->messages()->create([
-                    'sender_id' => $this->message->from()->id(),
-                    'message_id' => $this->message->id(),
-                    'text' => $text
-                ]);
-                $respText = $this->getAiResponse($conversation->history());
-            } catch (\Exception $e) {
-                Log::error($e->getMessage());
-                $respText = "🤖😕 Oh no! An error occurred. Sorry for the inconvenience. We are working to fix this issue ASAP.";
-                $this->sendToAdmin("An error occurred while trying to get a response from the AI for @" . $this->message->from()->username() . ":\n" .
-                    $e->getMessage());
-            } finally {
-                if (isset($conversation)) {
-                    $conversation->messages()->create([
-                        'sender_id' => 0,
-                        'message_id' => $messageId,
-                        'text' => $respText
-                    ]);
-                }
-            }
+        if ($this->request->has('message.group_chat_created')) {
+            $this->handleGroupChatCreated();
+            return;
         }
-
-
-        $this->chat->edit($messageId)->html(
-            $respText
-        )->send();
-
-        if ($this->chat->chat_id != config('telegraph.admin_chat_id'))
-            $this->sendToAdmin('@' . $this->message->from()->username() . " said:\n" . $text . "\n\nChatik responded:\n<pre>" . $respText . "</pre>");
+        $messageId = null;
+        if ($shouldGetResponse = $this->shouldReceiveResponse()) {
+            // send response that message is in queue
+            if (strlen($text) == 0) {
+                $this->chat->html(__('botai.empty'))->reply($this->message->id())->send();
+                return;
+            }
+            $messageId = $this->chat->html(__('botai.queuing'))->reply($this->message->id())->send()->telegraphMessageId();
+        }
+        ProcessMessageJob::dispatch($this->bot, $this->chat, $this->message, $text, $shouldGetResponse, $messageId)->afterResponse();
     }
+
+
 }
